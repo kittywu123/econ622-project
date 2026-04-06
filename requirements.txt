@@ -1,0 +1,8 @@
+numpy
+scipy
+cvxpy[highs]
+pandas
+matplotlib
+seaborn
+pytest
+jupyter
