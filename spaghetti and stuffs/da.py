@@ -13,7 +13,7 @@ PhD constraint: blocks belonging to a PhD-required course reject non-PhD student
 """
 
 import numpy as np
-from dgp import Market
+from DGP import Market
 
 
 def _expand_to_blocks(market: Market):
@@ -154,13 +154,14 @@ def summarize_assignment(assignment: np.ndarray, market: Market) -> None:
     for j in range(market.n_courses):
         assigned = (assignment == j).sum()
         phd_tag = " [PhD required]" if market.phd_required[j] else ""
-        print(f"  Course {j}: {assigned} / {market.capacities[j]} slots{phd_tag}")
+        print(f"  {market.course_codes[j]}: {assigned} / {market.capacities[j]} slots{phd_tag}")
 
-    print("\nUnmatched students:", np.where(assignment == -1)[0].tolist())
+    unmatched = [market.student_names[i] for i in np.where(assignment == -1)[0]]
+    print("\nUnmatched students:", unmatched)
 
 
 if __name__ == "__main__":
-    from dgp import generate_market
+    from DGP import generate_market
 
     m = generate_market(seed=42)
     assignment = deferred_acceptance(m)
@@ -172,7 +173,7 @@ if __name__ == "__main__":
         if j >= 0:
             rank = m.student_rankings[i, j]
             phd_req = " [PhD required]" if m.phd_required[j] else ""
-            course = f"course {j}{phd_req} (rank {rank})"
+            course = f"{m.course_codes[j]}{phd_req} (rank {rank})"
         else:
             course = "unmatched"
-        print(f"  Student {i}{phd}: {course}")
+        print(f"  {m.student_names[i]}{phd}: {course}")

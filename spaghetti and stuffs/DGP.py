@@ -12,6 +12,16 @@ import numpy as np
 from dataclasses import dataclass
 from typing import Optional
 
+_GREEK = [
+    "Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta", "Eta", "Theta",
+    "Iota", "Kappa", "Lambda", "Mu", "Nu", "Xi", "Omicron", "Pi",
+    "Rho", "Sigma", "Tau", "Upsilon", "Phi", "Chi", "Psi", "Omega",
+]
+
+_COURSE_POOL = [f"ECON{num}" for num in [
+    101, 102, 201, 202, 221, 301, 302, 306, 401, 402, 500, 502, 526,
+]]
+
 
 @dataclass
 class Market:
@@ -29,6 +39,9 @@ class Market:
     phi: np.ndarray                 # latent course skill vectors, shape (n_courses, k)
     phd_students: np.ndarray        # bool array shape (n_students,), True if PhD student
     phd_required: np.ndarray        # bool array shape (n_courses,), True if course requires a PhD TA
+    course_rejections: list         # course_rejections[j] = set of student indices course j always rejects
+    student_names: list             # student_names[i] = name string for student i
+    course_codes: list              # course_codes[j] = code string for course j
 
 
 def generate_market(
@@ -39,6 +52,7 @@ def generate_market(
     capacity_range: tuple = (1, 3),
     phd_fraction: float = 0.4,
     phd_required_fraction: float = 0.25,
+    rejection_fraction: float = 0.1,
     sparse_prefs: bool = False,
     sparse_length: Optional[int] = None,
     seed: Optional[int] = None,
@@ -62,6 +76,8 @@ def generate_market(
         Fraction of students who are PhD students.
     phd_required_fraction : float
         Fraction of courses that require a PhD TA.
+    rejection_fraction : float
+        Expected fraction of students each course rejects outright.
     sparse_prefs : bool
         If True, students only rank a subset of courses.
     sparse_length : int or None
@@ -93,6 +109,13 @@ def generate_market(
     phd_students = rng.random(n_students) < phd_fraction
     phd_required = rng.random(n_courses) < phd_required_fraction
 
+    # Course rejection lists: each course rejects a random subset of students by index
+    n_rejected = max(0, round(rejection_fraction * n_students))
+    course_rejections = [
+        set(rng.choice(n_students, size=n_rejected, replace=False).tolist())
+        for _ in range(n_courses)
+    ]
+
     # Course capacities
     lo, hi = capacity_range
     capacities = rng.integers(lo, hi + 1, size=n_courses)
@@ -115,6 +138,19 @@ def generate_market(
 
     course_prefs = [list(np.argsort(-course_scores[j])) for j in range(n_courses)]
 
+    # Student names: Greek letters, with numeric suffix if n_students > 24
+    base_names = [_GREEK[i % len(_GREEK)] for i in range(n_students)]
+    seen: dict = {}
+    student_names = []
+    for name in base_names:
+        seen[name] = seen.get(name, 0) + 1
+        student_names.append(name if seen[name] == 1 else f"{name}{seen[name]}")
+
+    # Course codes: shuffle ECON pool and take n_courses
+    course_pool = list(_COURSE_POOL)
+    rng.shuffle(course_pool)
+    course_codes = course_pool[:n_courses]
+
     return Market(
         n_students=n_students,
         n_courses=n_courses,
@@ -129,6 +165,9 @@ def generate_market(
         phi=phi,
         phd_students=phd_students,
         phd_required=phd_required,
+        course_rejections=course_rejections,
+        student_names=student_names,
+        course_codes=course_codes,
     )
 
 
@@ -136,7 +175,8 @@ def summarize_market(market: Market) -> None:
     """Print a quick summary of a generated market."""
     print(f"Students : {market.n_students}  ({market.phd_students.sum()} PhD)")
     print(f"Courses  : {market.n_courses}  ({market.phd_required.sum()} require PhD TA)")
-    print(f"Capacities: {market.capacities}  (total slots: {market.capacities.sum()})")
+    caps = {market.course_codes[j]: market.capacities[j] for j in range(market.n_courses)}
+    print(f"Capacities: {caps}  (total slots: {market.capacities.sum()})")
     pref_len = [len(p) for p in market.student_prefs]
     print(f"Student pref list length: min={min(pref_len)}, max={max(pref_len)}")
 
@@ -153,8 +193,10 @@ if __name__ == "__main__":
 
     print("\nStudent preference lists (first 3 students):")
     for i in range(3):
-        print(f"  Student {i}: {m.student_prefs[i]}")
+        prefs = [m.course_codes[j] for j in m.student_prefs[i]]
+        print(f"  {m.student_names[i]}: {prefs}")
 
     print("\nCourse preference lists (first 3 courses):")
     for j in range(3):
-        print(f"  Course {j}: {m.course_prefs[j]}")
+        prefs = [m.student_names[i] for i in m.course_prefs[j]]
+        print(f"  {m.course_codes[j]}: {prefs}")
