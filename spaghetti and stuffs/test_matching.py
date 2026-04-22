@@ -3,6 +3,9 @@ import pytest
 from DGP import generate_market, Market, _GREEK
 from da import deferred_acceptance
 from sd import serial_dictatorship
+from mip import solve_mip, MIPResult
+
+_SOLVER = "GUROBI"
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -209,3 +212,134 @@ class TestSerialDictatorship:
                             phd_fraction=0.0, phd_required_fraction=1.0)
         a = serial_dictatorship(m, seed=0)
         assert np.all(a == -1)
+
+
+# ── MIP tests ─────────────────────────────────────────────────────────────────
+
+class TestMIP:
+    def _solve(self, market, objective="student", lp_relax=False):
+        return solve_mip(market, objective=objective, lp_relax=lp_relax, solver=_SOLVER)
+
+    # ── structural ────────────────────────────────────────────────────────────
+
+    def test_output_shape(self):
+        m = generate_market(seed=50)
+        res = self._solve(m)
+        assert res.assignment.shape == (m.n_students,)
+
+    def test_assignment_values_in_range(self):
+        m = generate_market(seed=51)
+        res = self._solve(m)
+        assert np.all((res.assignment >= -1) & (res.assignment < m.n_courses))
+
+    def test_capacity_not_exceeded(self):
+        m = generate_market(seed=52)
+        res = self._solve(m)
+        for j in range(m.n_courses):
+            assert (res.assignment == j).sum() <= m.capacities[j]
+
+    def test_phd_constraint(self):
+        m = generate_market(seed=53, phd_required_fraction=0.5)
+        for obj in ("student", "course", "bilateral", "egalitarian"):
+            res = self._solve(m, objective=obj)
+            for i in range(m.n_students):
+                if res.assignment[i] >= 0 and m.phd_required[res.assignment[i]]:
+                    assert m.phd_students[i]
+
+    def test_rejection_list_respected(self):
+        m = generate_market(seed=54, rejection_fraction=0.3)
+        res = self._solve(m)
+        for i in range(m.n_students):
+            if res.assignment[i] >= 0:
+                assert i not in m.course_rejections[res.assignment[i]]
+
+    def test_result_fields_populated(self):
+        m = generate_market(seed=55)
+        res = self._solve(m)
+        assert res.status is not None
+        assert not np.isnan(res.obj_value)
+        assert res.solve_time > 0
+        assert res.X_value.shape == (m.n_students, m.n_courses)
+
+    # ── all objectives ────────────────────────────────────────────────────────
+
+    def test_all_objectives_run(self):
+        m = generate_market(seed=56)
+        for obj in ("student", "course", "bilateral", "egalitarian"):
+            res = self._solve(m, objective=obj)
+            assert res.assignment.shape == (m.n_students,)
+
+    # ── edge cases ────────────────────────────────────────────────────────────
+
+    def test_all_matched_when_ample_slots(self):
+        m = generate_market(n_students=10, n_courses=5, seed=57,
+                            capacity_range=(10, 10), phd_required_fraction=0.0,
+                            rejection_fraction=0.0)
+        for obj in ("student", "course", "bilateral"):
+            res = self._solve(m, objective=obj)
+            assert np.all(res.assignment >= 0)
+
+    def test_all_unmatched_when_blocked(self):
+        m = generate_market(n_students=10, n_courses=4, seed=58,
+                            phd_fraction=0.0, phd_required_fraction=1.0)
+        for obj in ("student", "course", "bilateral"):
+            res = self._solve(m, objective=obj)
+            assert np.all(res.assignment == -1)
+
+    # ── optimality ────────────────────────────────────────────────────────────
+
+    def test_student_utility_at_least_da(self):
+        m = generate_market(seed=59, phd_required_fraction=0.0, rejection_fraction=0.0)
+        res = self._solve(m, objective="student")
+        a_da = deferred_acceptance(m)
+
+        mip_util = sum(m.student_scores[i, res.assignment[i]] for i in range(m.n_students) if res.assignment[i] >= 0)
+        da_util  = sum(m.student_scores[i, a_da[i]]           for i in range(m.n_students) if a_da[i] >= 0)
+        assert mip_util >= da_util - 1e-6
+
+    def test_egalitarian_min_utility_geq_student(self):
+        # With ample capacity both objectives fully match everyone, so cardinality
+        # is equal and egalitarian's explicit min-maximisation must win or tie.
+        m = generate_market(n_students=10, n_courses=5, seed=60,
+                            capacity_range=(5, 5), phd_required_fraction=0.0,
+                            rejection_fraction=0.0)
+        res_egal    = self._solve(m, objective="egalitarian")
+        res_student = self._solve(m, objective="student")
+
+        assert np.all(res_egal.assignment >= 0)
+        assert np.all(res_student.assignment >= 0)
+
+        min_egal    = min(m.student_scores[i, res_egal.assignment[i]]    for i in range(m.n_students))
+        min_student = min(m.student_scores[i, res_student.assignment[i]] for i in range(m.n_students))
+        assert min_egal >= min_student - 1e-6
+
+    # ── LP relaxation ─────────────────────────────────────────────────────────
+
+    def test_lp_output_shape(self):
+        m = generate_market(seed=61)
+        res = self._solve(m, lp_relax=True)
+        assert res.assignment.shape == (m.n_students,)
+
+    def test_lp_capacity_not_exceeded(self):
+        m = generate_market(seed=62)
+        res = self._solve(m, lp_relax=True)
+        for j in range(m.n_courses):
+            assert (res.assignment == j).sum() <= m.capacities[j]
+
+    def test_lp_obj_geq_mip(self):
+        m = generate_market(seed=63, phd_required_fraction=0.0, rejection_fraction=0.0)
+        res_mip = self._solve(m, objective="student")
+        res_lp  = self._solve(m, objective="student", lp_relax=True)
+        assert res_lp.obj_value >= res_mip.obj_value - 1e-6
+
+    # ── error handling ────────────────────────────────────────────────────────
+
+    def test_invalid_objective_raises(self):
+        m = generate_market(seed=64)
+        with pytest.raises(ValueError, match="Unknown objective"):
+            solve_mip(m, objective="invalid", solver=_SOLVER)
+
+    def test_invalid_solver_raises(self):
+        m = generate_market(seed=65)
+        with pytest.raises(ValueError, match="Unknown solver"):
+            solve_mip(m, objective="student", solver="BLAH")

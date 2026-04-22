@@ -49,12 +49,16 @@ def generate_market(
     n_courses: int = 8,
     k: int = 3,
     sigma: float = 0.5,
+    popularity_weight: float = 0.0,
     capacity_range: tuple = (1, 3),
     phd_fraction: float = 0.4,
     phd_required_fraction: float = 0.25,
     rejection_fraction: float = 0.1,
     sparse_prefs: bool = False,
     sparse_length: Optional[int] = None,
+    fixed_capacities: Optional[np.ndarray] = None,
+    fixed_course_codes: Optional[list] = None,
+    fixed_phd_required: Optional[np.ndarray] = None,
     seed: Optional[int] = None,
 ) -> Market:
     """
@@ -78,6 +82,16 @@ def generate_market(
         Fraction of courses that require a PhD TA.
     rejection_fraction : float
         Expected fraction of students each course rejects outright.
+    popularity_weight : float
+        Scale of a course-level popularity term shared by all students.
+        0.0 (default) = pure skill match. Higher values make some courses
+        universally preferred, creating competition for popular slots.
+    fixed_capacities : np.ndarray or None
+        If provided, overrides random capacity draws. Shape (n_courses,).
+    fixed_course_codes : list or None
+        If provided, overrides randomly sampled course codes.
+    fixed_phd_required : np.ndarray or None
+        If provided, overrides randomly drawn PhD-required flags. Shape (n_courses,).
     sparse_prefs : bool
         If True, students only rank a subset of courses.
     sparse_length : int or None
@@ -102,12 +116,16 @@ def generate_market(
     eps_student = rng.normal(0, sigma, size=(n_students, n_courses))
     eps_course = rng.normal(0, sigma, size=(n_courses, n_students))
 
-    student_scores = base + eps_student       # u_ij
+    course_popularity = rng.standard_normal(n_courses)  # μ_j, one per course
+    student_scores = base + eps_student + popularity_weight * course_popularity
     course_scores = base.T + eps_course       # v_ji (independent noise draws)
 
     # PhD flags
     phd_students = rng.random(n_students) < phd_fraction
-    phd_required = rng.random(n_courses) < phd_required_fraction
+    if fixed_phd_required is not None:
+        phd_required = np.asarray(fixed_phd_required, dtype=bool)
+    else:
+        phd_required = rng.random(n_courses) < phd_required_fraction
 
     # Course rejection lists: each course rejects a random subset of students by index
     n_rejected = max(0, round(rejection_fraction * n_students))
@@ -117,8 +135,11 @@ def generate_market(
     ]
 
     # Course capacities
-    lo, hi = capacity_range
-    capacities = rng.integers(lo, hi + 1, size=n_courses)
+    if fixed_capacities is not None:
+        capacities = np.asarray(fixed_capacities, dtype=int)
+    else:
+        lo, hi = capacity_range
+        capacities = rng.integers(lo, hi + 1, size=n_courses)
 
     # Rankings: rank of item j in agent i's list (0 = most preferred)
     student_rankings = np.argsort(np.argsort(-student_scores, axis=1), axis=1)
@@ -147,9 +168,12 @@ def generate_market(
         student_names.append(name if seen[name] == 1 else f"{name}{seen[name]}")
 
     # Course codes: shuffle ECON pool and take n_courses
-    course_pool = list(_COURSE_POOL)
-    rng.shuffle(course_pool)
-    course_codes = course_pool[:n_courses]
+    if fixed_course_codes is not None:
+        course_codes = list(fixed_course_codes)
+    else:
+        course_pool = list(_COURSE_POOL)
+        rng.shuffle(course_pool)
+        course_codes = course_pool[:n_courses]
 
     return Market(
         n_students=n_students,
