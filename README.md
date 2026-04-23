@@ -123,6 +123,10 @@ Key parameters: `phd_fraction`, `phd_required_fraction`, `rejection_fraction`, `
 └── pyproject.toml          dependencies (numpy, cvxpy, highs, seaborn, jupyter, pytest)
 ```
 
+## Quick Overview
+
+For a quick summary of results, `code (spaghetti)/comparisons and visualizations.ipynb` is where I run all three algorithms and visualize the comparisons. Most of the discussion lives here. See also `notes.md` for additional notes (and after thoughts).
+
 ## Setup
 
 Install dependencies with `uv`:
