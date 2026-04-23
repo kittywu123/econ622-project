@@ -3,9 +3,12 @@
 
 ## Overview
 
-The VSE currently allocates TAs each term using a deferred acceptance procedure. This project uses that setting as a concrete backdrop to build a proof-of-concept framework that implements the current approach alongside two alternative matching methods, simulates preference data, and compares performance across several criteria: stability, fairness, welfare, and computational efficiency.
+The VSE currently allocates TAs each term using a deferred acceptance procedure. This project uses that setting as a backdrop to build a proof-of-concept framework that implements the current approach (deferred-acceptance) alongside two alternative matching methods, simulates preference data, and compares performance across several criteria: stability, fairness, welfare, and computational efficiency.
 
-This is an exploration and mechanical exercise — not a theoretical contribution. The goal is to ask: *given the same preference data, how differently do these algorithms actually perform, and what does each one optimise for?*
+I'm approaching this is an exploration of various ways to solve the same matching problem, and not as a theoretical contribution on greating a 'better' algorithm. The goal is to ask: *given the same preference data, how differently do these algorithms actually perform, and what does each one optimise for?* Given the context is close to our livlihoods (for better or for worse), I thought this would be a fun application of a more specialized optimization problem for the project :D
+
+Note that the project was completed with the help fo Claude. 
+
 
 ## The Matching Problem
 
@@ -19,7 +22,7 @@ Let $I$ = students, $J$ = courses, $c_j$ = TA slots per course. The assignment i
 
 ## Algorithms
 
-### 1. Deferred Acceptance (Gale–Shapley)
+### 1. Deferred Acceptance / Gale–Shapley (DA)
 
 Students propose to their most-preferred course that hasn't yet rejected them. Courses tentatively accept up to capacity, holding the best applicants by their own ranking and rejecting the rest. Rejected students propose to their next choice. This repeats until no proposals remain.
 
@@ -27,15 +30,15 @@ At the VSE, the many-to-one problem (multiple slots per course) is converted to 
 
 **Key properties:** student-optimal, strategy-proof for students, always produces a stable matching (no blocking pairs).
 
-### 2. Serial Dictatorship
+### 2. Serial Dictatorship (SD)
 
-Students are ordered by a priority ranking (random by default). The first student picks their top available choice, the second picks from what remains, and so on until all slots are filled. Courses have no voice in the outcome.
+Students are ordered by a (random) priority ranking. The first student picks their top available choice, the second picks from what remains, and so on until all slots are filled. Courses have no voice in the outcome.
 
-**Key properties:** strategy-proof, Pareto efficient among students. Not stable — can produce blocking pairs, and outcomes are sensitive to the priority order.
+**Key properties:** strategy-proof, Pareto efficient among students. Not stable - can produce blocking pairs, and outcomes are sensitive to the priority order.
 
 ### 3. Mixed Integer Programming (MIP)
 
-Reframes allocation as a constrained optimisation problem — how would a social planner assign TAs, assuming preferences are reported truthfully? Implemented via CVXPY with Gurobi (HiGHS as a free fallback).
+Reframes allocation as a constrained optimisation problem. Through the lens of how would a social planner assign TAs, assuming preferences are reported truthfully? Implemented via CVXPY with Gurobi (HiGHS as a free fallback).
 
 Four objective variants are supported:
 
@@ -46,7 +49,7 @@ Four objective variants are supported:
 | Bilateral | $\max \sum_{i,j} (u_{ij} + v_{ji})\, x_{ij}$ |
 | Egalitarian (min-max) | $\max\; t \quad$ s.t. $\; t \leq \sum_j u_{ij} x_{ij} + M(1 - \sum_j x_{ij})\;\; \forall i$ |
 
-The egalitarian formulation uses a big-$M$ constant to exclude unmatched students from binding the floor utility $t$. It also runs a phase-1 problem first to fix the maximum matching cardinality before optimising the floor.
+The egalitarian formulation uses a constant to exclude unmatched students from binding the floor utility $t$ that is always positive. It also runs a phase-1 problem first to fix the maximum possible matches before optimising the floor.
 
 An **LP relaxation** variant is also included: relax $x_{ij} \in \{0,1\}$ to $x_{ij} \in [0,1]$, solve in polynomial time, then round greedily ($\arg\max_j x_{ij}$ if $> 0.5$).
 
@@ -103,17 +106,18 @@ Key parameters: `phd_fraction`, `phd_required_fraction`, `rejection_fraction`, `
 
 ```
 .
-├── spaghetti and stuffs/
+├── code (spaghetti)/
 │   ├── DGP.py              data generating process; exports generate_market() and Market
 │   ├── da.py               student-proposing deferred acceptance
 │   ├── sd.py               serial dictatorship
 │   ├── mip.py              MIP / LP relaxation via CVXPY; exports solve_mip()
 │   ├── test_matching.py    pytest suite (DGP, DA stability, SD correctness, MIP)
-│   └── comps.ipynb         comparison notebook — all algorithms, metrics, and visualisations
-├── presentation.pdf        project presentation slides
-├── project_proposal.pdf    original project proposal
-├── TA POSTING 2025-2026 Winter Term 2.pdf   real VSE TA postings used in the final simulation
-├── notes.tex               project notes
+│   └── comparisons.ipynb   comparison notebook — all algorithms, metrics, and visualisations
+├── supporting documents (garlic bread)/
+│   ├── presentation.pdf        project presentation slides
+│   ├── project_proposal.pdf    original project proposal
+│   └── TA POSTING 2025-2026 Winter Term 2.pdf   real VSE TA postings used in the final simulation
+├── notes.md                project notes and thoughts
 └── pyproject.toml          dependencies (numpy, cvxpy, highs, seaborn, jupyter, pytest)
 ```
 
@@ -128,7 +132,7 @@ uv sync
 To run the test suite:
 
 ```bash
-cd "spaghetti and stuffs"
+cd "code (spaghetti)"
 pytest test_matching.py
 ```
 
