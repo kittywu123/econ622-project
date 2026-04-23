@@ -116,8 +116,11 @@ def generate_market(
     eps_student = rng.normal(0, sigma, size=(n_students, n_courses))
     eps_course = rng.normal(0, sigma, size=(n_courses, n_students))
 
-    course_popularity = rng.standard_normal(n_courses)  # μ_j, one per course
-    student_scores = base + eps_student + popularity_weight * course_popularity
+    if popularity_weight > 0:
+        course_popularity = rng.standard_normal(n_courses)  # μ_j, one per course
+        student_scores = base + eps_student + popularity_weight * course_popularity
+    else:
+        student_scores = base + eps_student
     course_scores = base.T + eps_course       # v_ji (independent noise draws)
 
     # PhD flags
@@ -140,6 +143,13 @@ def generate_market(
     else:
         lo, hi = capacity_range
         capacities = rng.integers(lo, hi + 1, size=n_courses)
+
+    # Ensure enough PhD students to fill all PhD-required slots
+    phd_slots_needed = int(capacities[phd_required].sum())
+    shortfall = phd_slots_needed - int(phd_students.sum())
+    if shortfall > 0:
+        non_phd = np.where(~phd_students)[0]
+        phd_students[rng.choice(non_phd, size=min(shortfall, len(non_phd)), replace=False)] = True
 
     # Rankings: rank of item j in agent i's list (0 = most preferred)
     student_rankings = np.argsort(np.argsort(-student_scores, axis=1), axis=1)
@@ -167,7 +177,7 @@ def generate_market(
         seen[name] = seen.get(name, 0) + 1
         student_names.append(name if seen[name] == 1 else f"{name}{seen[name]}")
 
-    # Course codes: shuffle ECON pool and take n_courses
+    # Course codes
     if fixed_course_codes is not None:
         course_codes = list(fixed_course_codes)
     else:

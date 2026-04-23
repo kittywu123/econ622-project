@@ -108,6 +108,11 @@ def deferred_acceptance(market: Market) -> np.ndarray:
                 next_free.append(i)
                 continue
 
+            # Rejection list: course has explicitly excluded this student
+            if i in market.course_rejections[j]:
+                next_free.append(i)
+                continue
+
             # Block is empty — student is tentatively accepted
             if tentative[b] == -1:
                 tentative[b] = i
