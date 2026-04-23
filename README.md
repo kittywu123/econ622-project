@@ -114,7 +114,7 @@ Key parameters: `phd_fraction`, `phd_required_fraction`, `rejection_fraction`, `
 │   ├── sd.py               serial dictatorship
 │   ├── mip.py              MIP / LP relaxation via CVXPY; exports solve_mip()
 │   ├── test_matching.py    pytest suite (DGP, DA stability, SD correctness, MIP)
-│   └── comparisons.ipynb   comparison notebook — all algorithms, metrics, and visualisations
+│   └── comparisons and visualizations.ipynb   comparison notebook — all algorithms, metrics, and visualisations
 ├── supporting documents (garlic bread)/
 │   ├── presentation.pdf        project presentation slides
 │   ├── project_proposal.pdf    original project proposal
