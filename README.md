@@ -18,7 +18,7 @@ Let $I$ = students, $J$ = courses, $c_j$ = TA slots per course. The assignment i
 - Each student is assigned at most once: $\sum_j x_{ij} \leq 1$
 - Course capacity: $\sum_i x_{ij} \leq c_j$
 - PhD requirement: if $d_j = 1$, only PhD students ($\text{phd}_i = 1$) may be assigned
-- Rejection lists: some courses reject specific students outright
+- Rejection lists: some courses reject specific students outright always 
 
 ## Algorithms
 
@@ -38,9 +38,11 @@ Students are ordered by a (random) priority ranking. The first student picks the
 
 ### 3. Mixed Integer Programming (MIP)
 
-Reframes allocation as a constrained optimisation problem. Through the lens of how would a social planner assign TAs, assuming preferences are reported truthfully? Implemented via CVXPY with Gurobi (HiGHS as a free fallback).
+Reframes allocation as a constrained optimisation problem. Through the lens of how would a social planner assign TAs, assuming preferences are reported truthfully.
 
-Four objective variants are supported:
+Implemented via CVXPY with Gurobi (HiGHS as a free fallback).
+
+Four objective variants are included:
 
 | Objective | Formulation |
 |---|---|
@@ -51,7 +53,7 @@ Four objective variants are supported:
 
 The egalitarian formulation uses a constant to exclude unmatched students from binding the floor utility $t$ that is always positive. It also runs a phase-1 problem first to fix the maximum possible matches before optimising the floor.
 
-An **LP relaxation** variant is also included: relax $x_{ij} \in \{0,1\}$ to $x_{ij} \in [0,1]$, solve in polynomial time, then round greedily ($\arg\max_j x_{ij}$ if $> 0.5$).
+An **LP relaxation** variant is also included: relax $x_{ij} \in \{0,1\}$ to $x_{ij} \in [0,1]$ (so no long an integer constraint), solve in polynomial time, then rounded. Computationally, this could be more efficient than enforcing the strict integer constraint for the decision variable.
 
 ## Data Generating Process
 
@@ -136,7 +138,7 @@ cd "code (spaghetti)"
 pytest test_matching.py
 ```
 
-**Solver note:** the MIP uses Gurobi by default, which requires a license (free academic licenses available at gurobi.com). If you don't have one, pass `solver="HIGHS"` to `solve_mip()` — HiGHS is a free solver bundled with the install and supports all objectives. The comparison notebook uses HiGHS automatically for the large real-market simulation.
+**Solver note:** the MIP uses Gurobi by default, which requires a license (but it's free to request). Otherwise use `solver="HIGHS"`, HiGHS is a free solver bundled with the install and supports all objectives. The comparison notebook uses HiGHS automatically for the winter 2026 simulation.
 
 ```python
 from mip import solve_mip
