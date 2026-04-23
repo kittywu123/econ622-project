@@ -1,1 +1,142 @@
-# confused-salad-17
+# VSE TA Assignment Problem
+**ECON622 final project — Kitty Wu**
+
+---
+
+## Overview
+
+The VSE currently allocates TAs each term using a deferred acceptance procedure. This project uses that setting as a concrete backdrop to build a proof-of-concept framework that implements the current approach alongside two alternative matching methods, simulates preference data, and compares performance across several criteria: stability, fairness, welfare, and computational efficiency.
+
+This is an exploration and mechanical exercise — not a theoretical contribution. The goal is to ask: *given the same preference data, how differently do these algorithms actually perform, and what does each one optimise for?*
+
+---
+
+## The Matching Problem
+
+Let $I$ = students, $J$ = courses, $c_j$ = TA slots per course. The assignment is represented as a binary matrix $X$ where $x_{ij} \in \{0,1\}$ and $x_{ij} = 1$ if student $i$ is assigned to course $j$.
+
+**Constraints applied across all algorithms:**
+- Each student is assigned at most once: $\sum_j x_{ij} \leq 1$
+- Course capacity: $\sum_i x_{ij} \leq c_j$
+- PhD requirement: if $d_j = 1$, only PhD students ($\text{phd}_i = 1$) may be assigned
+- Rejection lists: some courses reject specific students outright
+
+---
+
+## Algorithms
+
+### 1. Deferred Acceptance (Gale–Shapley)
+
+Students propose to their most-preferred course that hasn't yet rejected them. Courses tentatively accept up to capacity, holding the best applicants by their own ranking and rejecting the rest. Rejected students propose to their next choice. This repeats until no proposals remain.
+
+At the VSE, the many-to-one problem (multiple slots per course) is converted to one-to-one by replicating each course $j$ into $c_j$ identical allocation blocks.
+
+**Key properties:** student-optimal, strategy-proof for students, always produces a stable matching (no blocking pairs).
+
+### 2. Serial Dictatorship
+
+Students are ordered by a priority ranking (random by default). The first student picks their top available choice, the second picks from what remains, and so on until all slots are filled. Courses have no voice in the outcome.
+
+**Key properties:** strategy-proof, Pareto efficient among students. Not stable — can produce blocking pairs, and outcomes are sensitive to the priority order.
+
+### 3. Mixed Integer Programming (MIP)
+
+Reframes allocation as a constrained optimisation problem — how would a social planner assign TAs, assuming preferences are reported truthfully? Implemented via CVXPY with Gurobi (HiGHS as a free fallback).
+
+Four objective variants are supported:
+
+| Objective | Formulation |
+|---|---|
+| Student utilitarian | $\max \sum_{i,j} u_{ij}\, x_{ij}$ |
+| Course utilitarian | $\max \sum_{i,j} v_{ji}\, x_{ij}$ |
+| Bilateral | $\max \sum_{i,j} (u_{ij} + v_{ji})\, x_{ij}$ |
+| Egalitarian (min-max) | $\max\; t \quad$ s.t. $\; t \leq \sum_j u_{ij} x_{ij} + M(1 - \sum_j x_{ij})\;\; \forall i$ |
+
+The egalitarian formulation uses a big-$M$ constant to exclude unmatched students from binding the floor utility $t$. It also runs a phase-1 problem first to fix the maximum matching cardinality before optimising the floor.
+
+An **LP relaxation** variant is also included: relax $x_{ij} \in \{0,1\}$ to $x_{ij} \in [0,1]$, solve in polynomial time, then round greedily ($\arg\max_j x_{ij}$ if $> 0.5$).
+
+---
+
+## Data Generating Process
+
+Markets are simulated using a latent skill vector model. Each student $i$ has a skill vector $\theta_i \in \mathbb{R}^k$ and each course $j$ has a requirement vector $\phi_j \in \mathbb{R}^k$, both drawn i.i.d. from $\mathcal{N}(0, I_k)$. Preference scores are:
+
+$$u_{ij} = \theta_i \cdot \phi_j + \varepsilon_{ij}, \qquad \varepsilon_{ij} \sim \mathcal{N}(0, \sigma^2)$$
+
+Course scores $v_{ji}$ are generated symmetrically with independent noise draws. Rankings are derived from scores.
+
+### The `Market` object
+
+`generate_market()` returns a `Market` dataclass containing everything needed to run any algorithm:
+
+| Field | Description |
+|---|---|
+| `student_scores` | $(n \times m)$ matrix of $u_{ij}$ |
+| `course_scores` | $(m \times n)$ matrix of $v_{ji}$ |
+| `student_rankings` / `course_rankings` | rank of each match (0 = top choice) |
+| `student_prefs` / `course_prefs` | ordered preference lists |
+| `capacities` | slots per course |
+| `phd_students` / `phd_required` | PhD eligibility flags |
+| `course_rejections` | per-course rejection sets |
+| `theta` / `phi` | latent skill vectors |
+
+### Generating a market
+
+```python
+from DGP import generate_market
+
+m = generate_market(
+    n_students=20,
+    n_courses=8,
+    k=3,               # latent skill dimension
+    sigma=0.5,         # idiosyncratic noise
+    seed=42,
+)
+```
+
+Key parameters: `phd_fraction`, `phd_required_fraction`, `rejection_fraction`, `capacity_range`, `sparse_prefs` / `sparse_length` (students only rank a subset of courses), `popularity_weight` (adds a shared course-level popularity term). Fixed course structures can be passed via `fixed_capacities`, `fixed_course_codes`, `fixed_phd_required`.
+
+---
+
+## Files
+
+```
+.
+├── spaghetti and stuffs/
+│   ├── DGP.py              data generating process; exports generate_market() and Market
+│   ├── da.py               student-proposing deferred acceptance
+│   ├── sd.py               serial dictatorship
+│   ├── mip.py              MIP / LP relaxation via CVXPY; exports solve_mip()
+│   ├── test_matching.py    pytest suite (DGP, DA stability, SD correctness, MIP)
+│   └── comps.ipynb         comparison notebook — all algorithms, metrics, and visualisations
+├── presentation.pdf        project presentation slides
+├── project_proposal.pdf    original project proposal
+├── TA POSTING 2025-2026 Winter Term 2.pdf   real VSE TA postings used in the final simulation
+├── notes.tex               project notes
+└── pyproject.toml          dependencies (numpy, cvxpy, highs, seaborn, jupyter, pytest)
+```
+
+---
+
+## Setup
+
+Install dependencies with `uv`:
+
+```bash
+uv sync
+```
+
+To run the test suite:
+
+```bash
+cd "spaghetti and stuffs"
+pytest test_matching.py
+```
+
+**Solver note:** the MIP uses Gurobi by default, which requires a license (free academic licenses available at gurobi.com). If you don't have one, pass `solver="HIGHS"` to `solve_mip()` — HiGHS is a free solver bundled with the install and supports all objectives. The comparison notebook uses HiGHS automatically for the large real-market simulation.
+
+```python
+from mip import solve_mip
+res = solve_mip(market, objective="student", solver="HIGHS")
+```
