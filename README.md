@@ -1,15 +1,11 @@
 # VSE TA Assignment Problem
 **ECON622 final project — Kitty Wu**
 
----
-
 ## Overview
 
 The VSE currently allocates TAs each term using a deferred acceptance procedure. This project uses that setting as a concrete backdrop to build a proof-of-concept framework that implements the current approach alongside two alternative matching methods, simulates preference data, and compares performance across several criteria: stability, fairness, welfare, and computational efficiency.
 
 This is an exploration and mechanical exercise — not a theoretical contribution. The goal is to ask: *given the same preference data, how differently do these algorithms actually perform, and what does each one optimise for?*
-
----
 
 ## The Matching Problem
 
@@ -20,8 +16,6 @@ Let $I$ = students, $J$ = courses, $c_j$ = TA slots per course. The assignment i
 - Course capacity: $\sum_i x_{ij} \leq c_j$
 - PhD requirement: if $d_j = 1$, only PhD students ($\text{phd}_i = 1$) may be assigned
 - Rejection lists: some courses reject specific students outright
-
----
 
 ## Algorithms
 
@@ -56,8 +50,6 @@ The egalitarian formulation uses a big-$M$ constant to exclude unmatched student
 
 An **LP relaxation** variant is also included: relax $x_{ij} \in \{0,1\}$ to $x_{ij} \in [0,1]$, solve in polynomial time, then round greedily ($\arg\max_j x_{ij}$ if $> 0.5$).
 
----
-
 ## Data Generating Process
 
 Markets are simulated using a latent skill vector model. Each student $i$ has a skill vector $\theta_i \in \mathbb{R}^k$ and each course $j$ has a requirement vector $\phi_j \in \mathbb{R}^k$, both drawn i.i.d. from $\mathcal{N}(0, I_k)$. Preference scores are:
@@ -70,16 +62,26 @@ Course scores $v_{ji}$ are generated symmetrically with independent noise draws.
 
 `generate_market()` returns a `Market` dataclass containing everything needed to run any algorithm:
 
-| Field | Description |
-|---|---|
-| `student_scores` | $(n \times m)$ matrix of $u_{ij}$ |
-| `course_scores` | $(m \times n)$ matrix of $v_{ji}$ |
-| `student_rankings` / `course_rankings` | rank of each match (0 = top choice) |
-| `student_prefs` / `course_prefs` | ordered preference lists |
-| `capacities` | slots per course |
-| `phd_students` / `phd_required` | PhD eligibility flags |
-| `course_rejections` | per-course rejection sets |
-| `theta` / `phi` | latent skill vectors |
+```python
+@dataclass
+class Market:
+    n_students: int
+    n_courses: int
+    capacities: np.ndarray          # (n_courses,)  — slots per course
+    student_scores: np.ndarray      # (n_students, n_courses)  — u_ij
+    course_scores: np.ndarray       # (n_courses, n_students)  — v_ji
+    student_rankings: np.ndarray    # (n_students, n_courses)  — rank of course j for student i (0 = top)
+    course_rankings: np.ndarray     # (n_courses, n_students)  — rank of student i for course j (0 = top)
+    student_prefs: list             # student_prefs[i] = ordered list of course indices
+    course_prefs: list              # course_prefs[j] = ordered list of student indices
+    theta: np.ndarray               # (n_students, k)  — latent student skill vectors
+    phi: np.ndarray                 # (n_courses, k)   — latent course requirement vectors
+    phd_students: np.ndarray        # (n_students,) bool
+    phd_required: np.ndarray        # (n_courses,) bool
+    course_rejections: list         # course_rejections[j] = set of rejected student indices
+    student_names: list
+    course_codes: list
+```
 
 ### Generating a market
 
@@ -96,8 +98,6 @@ m = generate_market(
 ```
 
 Key parameters: `phd_fraction`, `phd_required_fraction`, `rejection_fraction`, `capacity_range`, `sparse_prefs` / `sparse_length` (students only rank a subset of courses), `popularity_weight` (adds a shared course-level popularity term). Fixed course structures can be passed via `fixed_capacities`, `fixed_course_codes`, `fixed_phd_required`.
-
----
 
 ## Files
 
@@ -116,8 +116,6 @@ Key parameters: `phd_fraction`, `phd_required_fraction`, `rejection_fraction`, `
 ├── notes.tex               project notes
 └── pyproject.toml          dependencies (numpy, cvxpy, highs, seaborn, jupyter, pytest)
 ```
-
----
 
 ## Setup
 
